@@ -1,0 +1,39 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+
+function sendJson(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  }
+  const raw = Buffer.concat(chunks).toString('utf8')
+  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  if (req.method !== 'POST') {
+    return sendJson(res, 405, { error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' })
+  }
+
+  try {
+    const body = await readBody(req)
+    if (body.sourceType === 'url') {
+      return sendJson(res, 400, {
+        error: 'URL-based MP3 conversion requires an authorized provider adapter. Please use the "Upload a file" tab to convert your own media.',
+        code: 'URL_CONVERSION_UNAVAILABLE',
+      })
+    }
+
+    return sendJson(res, 503, {
+      error: 'The file conversion worker is not connected in this deployment. Please run the backend worker with Redis and FFmpeg.',
+      code: 'WORKER_UNAVAILABLE',
+    })
+  } catch {
+    return sendJson(res, 400, { error: 'Invalid request body.', code: 'INVALID_REQUEST' })
+  }
+}
