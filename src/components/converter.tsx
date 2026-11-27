@@ -106,7 +106,7 @@ function ConversionProgress({ phase, progress, uploadProgress, error, downloadUr
           <Button asChild><a href={downloadUrl} download><Download />Download MP3</a></Button>
           <Button type="button" variant="outline" onClick={onEditMetadata}>Edit metadata</Button>
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onReset} className="text-xs">Convert another</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onReset} className="text-xs">Start over</Button>
       </div>
     </div>
   }
@@ -212,28 +212,39 @@ export function ConverterCard({ notify }: { notify: (message: string) => void })
       } catch { setError('Please enter a valid media URL beginning with https://.'); return }
 
       if (fetchingMeta) return
-      setFetchingMeta(true)
-      setVideoMeta(null)
-      try {
-        const meta = await fetchVideoMetadata(url)
-        setVideoMeta(meta)
-        setMetadata(prev => ({
-          ...prev,
-          title: meta.title || prev.title,
-          artist: meta.artist || prev.artist,
-        }))
-        if (meta.thumbnailUrl && !artworkFile) {
-          setArtworkPreview(meta.thumbnailUrl)
+
+      // If metadata hasn't been fetched yet for this URL, fetch it first
+      if (!videoMeta) {
+        setFetchingMeta(true)
+        try {
+          const meta = await fetchVideoMetadata(url)
+          setVideoMeta(meta)
+          setMetadata(prev => ({
+            ...prev,
+            title: meta.title || prev.title,
+            artist: meta.artist || prev.artist,
+          }))
+          if (meta.thumbnailUrl && !artworkFile) {
+            setArtworkPreview(meta.thumbnailUrl)
+          }
+          setSettings(true)
+        } catch (err) {
+          const msg = err instanceof AuraConvertApiError
+            ? err.message
+            : 'Could not retrieve video information. Please try again.'
+          setError(msg)
+        } finally {
+          setFetchingMeta(false)
         }
-        setSettings(true)
-      } catch (err) {
-        const msg = err instanceof AuraConvertApiError
-          ? err.message
-          : 'Could not retrieve video information. Please try again.'
-        setError(msg)
-      } finally {
-        setFetchingMeta(false)
+        return
       }
+
+      // Metadata is ready — start conversion request
+      await conversion.convertUrl(url, {
+        quality: parseInt(quality, 10),
+        title: metadata.title || undefined,
+        artist: metadata.artist || undefined,
+      })
     }
   }
 
