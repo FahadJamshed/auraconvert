@@ -51,7 +51,7 @@ function HowItWorks() {
 }
 
 const faqs = [
-  { question: 'What can I convert with AuraConvert?', answer: 'AuraConvert supports authorized MP4, MOV, WebM, MP3, M4A, and WAV files up to 100 MB. URL-based conversion for YouTube, Vimeo, and SoundCloud requires authorized provider adapters.' },
+  { question: 'What can I convert with AuraConvert?', answer: 'AuraConvert supports authorized MP4, MOV, WebM, MP3, M4A, and WAV files up to 100 MB. You can also paste a direct link to a media file you own (for example on your own server or cloud storage). Streaming platform links such as YouTube, Vimeo, and SoundCloud are not supported.' },
   { question: 'Is AuraConvert free to use?', answer: 'AuraConvert is free to use and requires no account. Upload your media, customize metadata and artwork, and download your MP3.' },
   { question: 'Which audio quality should I choose?', answer: '128 kbps is compact and suitable for speech. 192 kbps balances size and clarity, while 256 and 320 kbps offer higher bitrates for music. The final result always depends on the source quality; a higher bitrate cannot restore details missing from the original.' },
   { question: 'Are my links and files kept private?', answer: 'Uploaded files are processed in temporary storage and automatically deleted after conversion. Generated MP3 downloads expire automatically. Only your theme preference is saved on this device.' },

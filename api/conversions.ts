@@ -15,6 +15,17 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
 }
 
+const STREAMING_HOSTS = ['youtube.com', 'youtu.be', 'vimeo.com', 'soundcloud.com', 'spotify.com', 'tiktok.com', 'instagram.com', 'facebook.com', 'dailymotion.com', 'twitch.tv']
+
+function isStreamingPlatform(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return STREAMING_HOSTS.some(h => host === h || host.endsWith(`.${h}`))
+  } catch {
+    return false
+  }
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   if (req.method !== 'POST') {
     return sendJson(res, 405, { error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' })
@@ -22,10 +33,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
   try {
     const body = await readBody(req)
-    if (body.sourceType === 'url') {
+    if (body.sourceType === 'url' && typeof body.sourceUrl === 'string' && isStreamingPlatform(body.sourceUrl)) {
       return sendJson(res, 400, {
-        error: 'URL-based MP3 conversion requires an authorized provider adapter. Please use the "Upload a file" tab to convert your own media.',
-        code: 'URL_CONVERSION_UNAVAILABLE',
+        error: 'Streaming platform links (YouTube, Vimeo, SoundCloud, etc.) are not supported. Use a direct link to a media file you own, or upload the file.',
+        code: 'UNSUPPORTED_SOURCE',
       })
     }
 

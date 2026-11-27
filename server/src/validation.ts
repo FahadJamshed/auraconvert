@@ -82,6 +82,30 @@ export function validateUrl(urlString: string): ValidationResult {
   return { valid: true }
 }
 
+/** Validate a direct media file URL (used for URL-based conversion). */
+export function validateDirectMediaUrl(urlString: string): ValidationResult {
+  let url: URL
+  try {
+    url = new URL(urlString)
+  } catch {
+    return { valid: false, error: 'Invalid URL format.', code: 'INVALID_URL' }
+  }
+
+  if (!['https:', 'http:'].includes(url.protocol)) {
+    return { valid: false, error: 'Only HTTPS and HTTP URLs are supported.', code: 'INVALID_PROTOCOL' }
+  }
+
+  if (url.username || url.password) {
+    return { valid: false, error: 'Links with embedded credentials are not supported.', code: 'INVALID_URL' }
+  }
+
+  if (urlString.length > 2048) {
+    return { valid: false, error: 'This link is too long.', code: 'INVALID_URL' }
+  }
+
+  return { valid: true }
+}
+
 export function validateUploadedFile(file: {
   mimetype: string
   originalname: string

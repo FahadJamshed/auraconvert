@@ -3,10 +3,11 @@ import multer from 'multer'
 import path from 'node:path'
 import fs from 'node:fs'
 import { config } from './config.js'
-import { createJob, getJob, updateJob, generateDownloadToken } from './job-store.js'
+import { createJob, getJob, updateJob } from './job-store.js'
 import { enqueueConversion, cancelQueuedJob } from './queue.js'
 import {
   validateUrl,
+  validateDirectMediaUrl,
   validateUploadedFile,
   validateArtworkFile,
   validateQuality,
@@ -18,6 +19,7 @@ import {
 } from './validation.js'
 import { safeFilename, uploadPath, outputPath, safeDelete } from './storage.js'
 import { fetchVideoMetadata } from './metadata.js'
+import { isStreamingPlatform, STREAMING_PLATFORM_MESSAGE, titleFromUrl } from './remote-source.js'
 import type { ConversionResponse, ApiError } from './types.js'
 
 const router = Router()
@@ -153,29 +155,39 @@ router.post('/api/conversions', async (req: Request, res: Response): Promise<voi
         return
       }
 
-      const urlValidation = validateUrl(sourceUrl)
+      const urlValidation = validateDirectMediaUrl(sourceUrl)
       if (!urlValidation.valid) {
         res.status(400).json({ error: urlValidation.error!, code: urlValidation.code! } satisfies ApiError)
         return
       }
 
-      // NOTE: URL-based conversion for YouTube/Vimeo/SoundCloud requires
-      // authorized provider adapters. For Phase 2 we support uploaded files.
-      // URL sources return a clear status indicating the provider is not yet available.
-      const job = await createJob({
-        sourceType: 'url',
-        sourceUrl,
+      // Streaming platforms require an authorized provider integration and are
+      // not downloaded. Direct media file links are fetched by the worker.
+      if (isStreamingPlatform(new URL(sourceUrl).hostname)) {
+        res.status(400).json({ error: STREAMING_PLATFORM_MESSAGE, code: 'UNSUPPORTED_SOURCE' } satisfies ApiError)
+        return
+      }
+
+      let validArtworkId: string | undefined
+      if (artworkId && typeof artworkId === 'string' && fs.existsSync(uploadPath(artworkId))) {
+        validArtworkId = artworkId
+      }
+
+      const fields = {
         quality: validateQuality(quality),
-        title: sanitizeMetadata(title),
+        title: sanitizeMetadata(title) || sanitizeMetadata(titleFromUrl(sourceUrl)),
         artist: sanitizeMetadata(artist),
-      })
+        album: sanitizeMetadata(album),
+        albumArtist: sanitizeMetadata(albumArtist),
+        genre: sanitizeMetadata(genre),
+        year: sanitizeYear(year),
+        trackNumber: sanitizeTrackNumber(trackNumber),
+      }
 
-      await updateJob(job.id, {
-        status: 'failed',
-        error: 'URL-based conversion requires an authorized provider adapter. This source is not yet available. Please upload a file instead.',
-      })
+      const job = await createJob({ sourceType: 'url', sourceUrl, artworkFilename: validArtworkId, ...fields })
+      await enqueueConversion({ jobId: job.id, sourceType: 'url', sourceUrl, artworkFilename: validArtworkId, ...fields })
 
-      res.status(201).json(formatJobResponse((await getJob(job.id))!))
+      res.status(201).json(formatJobResponse(job))
       return
     }
 

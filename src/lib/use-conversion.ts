@@ -203,10 +203,10 @@ export function useConversion() {
     }
   }, [stopPolling, startPolling])
 
-  /** Convert from URL (shows provider unavailable message). */
+  /** Convert a direct media file URL. */
   const convertUrl = useCallback(async (
     url: string,
-    options: { quality: number; title?: string; artist?: string }
+    options: { quality: number; artworkFile?: File | null } & Mp3Metadata
   ) => {
     abortRef.current = false
     stopPolling()
@@ -222,24 +222,45 @@ export function useConversion() {
     })
 
     try {
+      const artwork = options.artworkFile ? await uploadArtwork(options.artworkFile) : null
+      if (abortRef.current) return
+
       const job = await createConversion({
         sourceType: 'url',
         sourceUrl: url,
+        artworkId: artwork?.artworkId,
         quality: options.quality,
         title: options.title,
         artist: options.artist,
+        album: options.album,
+        albumArtist: options.albumArtist,
+        genre: options.genre,
+        year: options.year,
+        trackNumber: options.trackNumber,
       })
 
-      setState({
+      if (abortRef.current) return
+
+      setState((prev) => ({
+        ...prev,
         phase: job.status as ConversionPhase,
         progress: job.progress,
-        uploadProgress: 0,
-        error: job.error || null,
         jobId: job.id,
-        downloadUrl: null,
-        downloadExpiresAt: null,
-      })
+        error: job.error || null,
+      }))
+
+      if (!TERMINAL_STATES.has(job.status)) {
+        startPolling(job.id)
+      } else if (job.status === 'completed' && job.downloadUrl) {
+        setState((prev) => ({
+          ...prev,
+          downloadUrl: getDownloadUrl(job.downloadUrl!),
+          downloadExpiresAt: job.downloadExpiresAt || null,
+        }))
+      }
     } catch (err) {
+      if (abortRef.current) return
+
       const message = err instanceof AuraConvertApiError
         ? err.message
         : 'An unexpected error occurred. Please try again.'
@@ -250,7 +271,7 @@ export function useConversion() {
         error: message,
       }))
     }
-  }, [stopPolling])
+  }, [stopPolling, startPolling])
 
   /** Cancel an in-progress conversion. */
   const cancel = useCallback(async () => {

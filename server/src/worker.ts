@@ -4,6 +4,7 @@ import { config, ensureStorageDirs } from './config.js'
 import { CONVERSION_QUEUE, type ConversionJobData } from './queue.js'
 import { convertToMp3, verifyMp3Output } from './ffmpeg.js'
 import { uploadPath, outputPath, outputFilename, safeDelete } from './storage.js'
+import { downloadDirectMedia, RemoteSourceError } from './remote-source.js'
 
 ensureStorageDirs()
 
@@ -19,6 +20,7 @@ const worker = new Worker<ConversionJobData>(
     const {
       jobId,
       sourceType,
+      sourceUrl,
       uploadFilename,
       artworkFilename,
       quality,
@@ -37,15 +39,32 @@ const worker = new Worker<ConversionJobData>(
       // ── Validating ──────────────────────────────────────────────────────
       await updateJob(jobId, { status: 'validating', progress: 5 })
 
-      if (sourceType !== 'upload' || !uploadFilename) {
-        await updateJob(jobId, {
-          status: 'failed',
-          error: 'Only uploaded files are supported for conversion.',
-        })
+      let inputFile: string
+
+      if (sourceType === 'url') {
+        if (!sourceUrl) {
+          await updateJob(jobId, { status: 'failed', error: 'A source URL is required.' })
+          return
+        }
+        try {
+          // Download phase maps to 5–15% of overall progress.
+          const downloaded = await downloadDirectMedia(sourceUrl, config.storage.uploadDir, `url-${jobId}`, (pct) => {
+            void updateJob(jobId, { progress: 5 + Math.round(pct / 10) })
+          })
+          inputFile = downloaded.filePath
+        } catch (err) {
+          const message = err instanceof RemoteSourceError ? err.message : 'Could not download the linked file.'
+          await updateJob(jobId, { status: 'failed', error: message, progress: 0 })
+          if (artworkFilename) safeDelete(uploadPath(artworkFilename))
+          return
+        }
+      } else if (sourceType === 'upload' && uploadFilename) {
+        inputFile = uploadPath(uploadFilename)
+      } else {
+        await updateJob(jobId, { status: 'failed', error: 'Unsupported conversion source.' })
         return
       }
 
-      const inputFile = uploadPath(uploadFilename)
       const { existsSync } = await import('node:fs')
       if (!existsSync(inputFile)) {
         await updateJob(jobId, {

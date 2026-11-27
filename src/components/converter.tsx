@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Check, CheckCheck, ChevronDown, CircleAlert, Clipboard, Download, FileVideo, Headphones, ImagePlus, Link, LoaderCircle, LockKeyhole, Music2, Play, RefreshCw, ShieldCheck, SlidersHorizontal, Upload, X, XCircle } from 'lucide-react'
+import { ArrowRight, Check, CheckCheck, ChevronDown, CircleAlert, Clipboard, Download, FileVideo, Headphones, ImagePlus, Link, LoaderCircle, LockKeyhole, Music2, RefreshCw, ShieldCheck, SlidersHorizontal, Upload, X, XCircle } from 'lucide-react'
 import { Button, cn } from './ui/button'
 import { useConversion, type ConversionPhase } from '../lib/use-conversion'
-import { fetchVideoMetadata, AuraConvertApiError, type VideoMetadataResult } from '../lib/api'
 
 export function LoadingSkeleton({ label = 'Preparing your audio…' }: { label?: string }) {
   return <div role="status" className="flex gap-4 rounded-xl border border-line p-4"><div className="size-20 shrink-0 animate-pulse rounded-lg bg-soft" /><div className="flex-1 space-y-3 py-2"><div className="h-4 w-3/4 animate-pulse rounded bg-soft" /><div className="h-3 w-1/2 animate-pulse rounded bg-soft" /><span className="text-sm text-muted">{label}</span></div></div>
@@ -137,6 +136,8 @@ function UploadDropzone({ file, onFile, onClear, disabled }: { file: File | null
   </div>
 }
 
+const STREAMING_HOSTS = ['youtube.com', 'youtu.be', 'vimeo.com', 'soundcloud.com', 'spotify.com', 'tiktok.com', 'instagram.com', 'facebook.com', 'dailymotion.com', 'twitch.tv']
+
 export function ConverterCard({ notify }: { notify: (message: string) => void }) {
   const [tab, setTab] = useState<'url' | 'upload'>('url')
   const [url, setUrl] = useState('')
@@ -147,8 +148,6 @@ export function ConverterCard({ notify }: { notify: (message: string) => void })
   const [metadata, setMetadata] = useState({ title: '', artist: '', album: '', genre: '', year: '', trackNumber: '' })
   const [artworkFile, setArtworkFile] = useState<File | null>(null)
   const [artworkPreview, setArtworkPreview] = useState<string | null>(null)
-  const [fetchingMeta, setFetchingMeta] = useState(false)
-  const [videoMeta, setVideoMeta] = useState<VideoMetadataResult | null>(null)
   const artworkInput = useRef<HTMLInputElement>(null)
 
   const conversion = useConversion()
@@ -203,47 +202,27 @@ export function ConverterCard({ notify }: { notify: (message: string) => void })
         trackNumber: metadata.trackNumber || undefined,
       })
     } else {
+      let value: URL
       try {
-        const value = new URL(url)
+        value = new URL(url.trim())
         if (!['https:', 'http:'].includes(value.protocol)) throw new Error()
-        const host = value.hostname.toLowerCase().replace(/^www\./, '')
-        if (!['youtube.com', 'youtu.be', 'vimeo.com', 'soundcloud.com', 'm.youtube.com'].includes(host)) { setError('Please use a YouTube, Vimeo, or SoundCloud URL.'); return }
-        if (value.pathname === '/' && !value.searchParams.get('v')) { setError('Paste a link to a specific video or audio track, rather than a source homepage.'); return }
       } catch { setError('Please enter a valid media URL beginning with https://.'); return }
-
-      if (fetchingMeta) return
-
-      // If metadata hasn't been fetched yet for this URL, fetch it first
-      if (!videoMeta) {
-        setFetchingMeta(true)
-        try {
-          const meta = await fetchVideoMetadata(url)
-          setVideoMeta(meta)
-          setMetadata(prev => ({
-            ...prev,
-            title: meta.title || prev.title,
-            artist: meta.artist || prev.artist,
-          }))
-          if (meta.thumbnailUrl && !artworkFile) {
-            setArtworkPreview(meta.thumbnailUrl)
-          }
-          setSettings(true)
-        } catch (err) {
-          const msg = err instanceof AuraConvertApiError
-            ? err.message
-            : 'Could not retrieve video information. Please try again.'
-          setError(msg)
-        } finally {
-          setFetchingMeta(false)
-        }
+      const host = value.hostname.toLowerCase()
+      if (STREAMING_HOSTS.some(h => host === h || host.endsWith(`.${h}`))) {
+        setError('Streaming platform links (YouTube, Vimeo, SoundCloud, etc.) are not supported. Paste a direct link to a media file you own, or upload the file.')
         return
       }
 
-      // Metadata is ready — start conversion request
-      await conversion.convertUrl(url, {
+      const title = metadata.title || decodeURIComponent(value.pathname.split('/').pop() || '').replace(/\.[^.]+$/, '')
+      await conversion.convertUrl(value.toString(), {
         quality: parseInt(quality, 10),
-        title: metadata.title || undefined,
+        artworkFile,
+        title: title || undefined,
         artist: metadata.artist || undefined,
+        album: metadata.album || undefined,
+        genre: metadata.genre || undefined,
+        year: metadata.year || undefined,
+        trackNumber: metadata.trackNumber || undefined,
       })
     }
   }
@@ -289,27 +268,9 @@ export function ConverterCard({ notify }: { notify: (message: string) => void })
       </div>
       <form onSubmit={submit} noValidate>
         <div id="source-panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-          {tab === 'url' ? <><label htmlFor="media-url" className="mb-2.5 block text-sm font-medium">Your video, one link away</label><div className="flex flex-col gap-2.5 sm:flex-row"><div className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-xl border bg-input px-3.5 transition-shadow focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10', error ? 'border-red-500' : 'border-line')}><Link className="size-[18px] shrink-0 text-faint" /><input id="media-url" type="url" value={url} onChange={e => { setUrl(e.target.value); setError(''); setVideoMeta(null); if (conversion.phase !== 'idle') conversion.reset() }} placeholder="Paste your video link here…" disabled={isProcessing} aria-invalid={!!error} aria-describedby={error ? 'converter-error' : 'source-help'} className="h-[54px] w-full min-w-0 bg-transparent text-sm text-ink outline-none! placeholder:text-faint disabled:opacity-50" />{url ? <Button type="button" size="icon" variant="ghost" aria-label="Clear URL" className="-mr-2 shrink-0" disabled={isProcessing} onClick={() => { setUrl(''); setError('') }}><X /></Button> : <Button type="button" variant="ghost" size="sm" className="-mr-2 shrink-0 gap-1.5 text-xs" disabled={isProcessing} onClick={paste}><Clipboard className="size-3.5!" />Paste</Button>}</div><Button type="submit" disabled={isProcessing} className="h-[56px] px-6">Convert to MP3<ArrowRight className="ml-1" /></Button></div><p id="source-help" className="mt-3 flex items-center gap-1.5 text-sm text-muted"><LockKeyhole className="size-3.5 shrink-0" />Your links stay private. No account needed.</p></> : <><UploadDropzone file={file} onFile={onFile} onClear={() => setFile(null)} disabled={isProcessing} /><Button type="submit" disabled={isProcessing || !file} className="mt-3 w-full">{isProcessing ? <><LoaderCircle className="size-4 animate-spin" />Processing…</> : <>Prepare audio<ArrowRight /></>}</Button></>}
+          {tab === 'url' ? <><label htmlFor="media-url" className="mb-2.5 block text-sm font-medium">Direct link to your media file</label><div className="flex flex-col gap-2.5 sm:flex-row"><div className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-xl border bg-input px-3.5 transition-shadow focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10', error ? 'border-red-500' : 'border-line')}><Link className="size-[18px] shrink-0 text-faint" /><input id="media-url" type="url" value={url} onChange={e => { setUrl(e.target.value); setError(''); if (conversion.phase !== 'idle') conversion.reset() }} placeholder="https://example.com/media/track.mp4" disabled={isProcessing} aria-invalid={!!error} aria-describedby={error ? 'converter-error' : 'source-help'} className="h-[54px] w-full min-w-0 bg-transparent text-sm text-ink outline-none! placeholder:text-faint disabled:opacity-50" />{url ? <Button type="button" size="icon" variant="ghost" aria-label="Clear URL" className="-mr-2 shrink-0" disabled={isProcessing} onClick={() => { setUrl(''); setError('') }}><X /></Button> : <Button type="button" variant="ghost" size="sm" className="-mr-2 shrink-0 gap-1.5 text-xs" disabled={isProcessing} onClick={paste}><Clipboard className="size-3.5!" />Paste</Button>}</div><Button type="submit" disabled={isProcessing} className="h-[56px] px-6">Convert to MP3<ArrowRight className="ml-1" /></Button></div><p id="source-help" className="mt-3 flex items-center gap-1.5 text-sm text-muted"><LockKeyhole className="size-3.5 shrink-0" />Direct file links only (MP4, MOV, WebM, MP3, M4A, WAV · up to 100 MB). No account needed.</p></> : <><UploadDropzone file={file} onFile={onFile} onClear={() => setFile(null)} disabled={isProcessing} /><Button type="submit" disabled={isProcessing || !file} className="mt-3 w-full">{isProcessing ? <><LoaderCircle className="size-4 animate-spin" />Processing…</> : <>Prepare audio<ArrowRight /></>}</Button></>}
         </div>
         {error && <div id="converter-error" className="mt-3"><ErrorState>{error}</ErrorState></div>}
-
-        {fetchingMeta && <div className="mt-4"><LoadingSkeleton label="Fetching video information…" /></div>}
-
-        {videoMeta && !fetchingMeta && conversion.phase === 'idle' && (
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-line bg-surface p-4">
-            {artworkPreview
-              ? <img src={artworkPreview} alt={videoMeta.title} className="size-20 shrink-0 rounded-lg object-cover" />
-              : <DefaultArtwork className="size-20 shrink-0" />}
-            <div className="min-w-0 flex-1">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-primary">{videoMeta.platform}</p>
-              <h3 className="truncate text-sm font-semibold sm:text-base">{metadata.title || videoMeta.title}</h3>
-              <p className="mt-1 truncate text-sm text-muted">
-                {metadata.artist || videoMeta.artist}
-                {videoMeta.duration ? <><span className="px-1">·</span>{formatDuration(videoMeta.duration)}</> : null}
-              </p>
-            </div>
-          </div>
-        )}
 
         <ConversionProgress
           phase={conversion.phase}
@@ -332,7 +293,7 @@ export function ConverterCard({ notify }: { notify: (message: string) => void })
         />
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-3">
-          <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted"><span>Works with</span><span className="inline-flex items-center gap-1.5 font-medium"><span className="flex h-3.5 w-[19px] items-center justify-center rounded-[4px] bg-[#f04444]"><Play className="size-2 fill-white text-white" /></span>YouTube</span><span className="font-semibold italic text-[#1687b4] dark:text-cyan-300">vimeo</span><span className="inline-flex items-center gap-1 font-medium"><Music2 className="size-4 text-[#df631b] dark:text-orange-300" />SoundCloud</span></div>
+          <div className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted"><span>Works with</span><span className="inline-flex items-center gap-1.5 font-medium"><Link className="size-3.5 text-primary" />Direct file links</span><span className="inline-flex items-center gap-1.5 font-medium"><FileVideo className="size-3.5 text-primary" />Your own uploads</span></div>
           <button type="button" aria-expanded={settings} aria-controls="audio-settings" onClick={() => setSettings(!settings)} className="flex min-h-11 items-center gap-1.5 text-xs font-medium text-muted hover:text-primary"><SlidersHorizontal className="size-3.5" />MP3 · {quality} kbps<ChevronDown className={cn('size-3.5 transition-transform', settings && 'rotate-180')} /></button>
         </div>
         {settings && <div id="audio-settings" className="mt-3 space-y-5 border-t border-line pt-5">

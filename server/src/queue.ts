@@ -24,6 +24,7 @@ export function getQueue(): Queue {
 export interface ConversionJobData {
   jobId: string
   sourceType: 'upload' | 'url'
+  sourceUrl?: string
   uploadFilename?: string
   originalFilename?: string
   artworkFilename?: string
