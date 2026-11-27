@@ -96,7 +96,7 @@ function ConversionProgress({ phase, progress, uploadProgress, error, downloadUr
           : <DefaultArtwork className="size-20 shrink-0" />}
         <div className="min-w-0 flex-1">
           <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300"><CheckCheck className="size-3.5" />Ready to download</p>
-          <h3 className="truncate text-sm font-semibold sm:text-base">{displayTitle}</h3>
+          <h3 className="truncate text-sm font-semibold sm:text-base">{displayTitle}.mp3</h3>
           <p className="mt-0.5 truncate text-sm text-muted">{displayArtist}</p>
           <p className="mt-1 text-xs text-muted">MP3 · {bitrate || quality} kbps · {formatDuration(duration)} · {formatFileSize(fileSize)}</p>
         </div>
