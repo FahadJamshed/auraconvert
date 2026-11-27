@@ -1,0 +1,13 @@
+{
+  "description": "A responsive video-to-audio converter interface for turning supported media or authorized uploads into organized, quality-selectable MP3 downloads.",
+  "icons": {
+    "icon": "/favicon.png?v=auraconvert"
+  },
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,0 +1,62 @@
+# AuraConvert — Local development with Docker Compose
+# Start all services: docker compose up
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: development
+      CORS_ORIGIN: http://localhost:8443
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/storage/uploads
+      OUTPUT_DIR: /app/storage/outputs
+      TEMP_DIR: /app/storage/temp
+      MAX_FILE_SIZE_MB: 100
+      DOWNLOAD_EXPIRY_SECONDS: 3600
+    volumes:
+      - shared-storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/storage/uploads
+      OUTPUT_DIR: /app/storage/outputs
+      TEMP_DIR: /app/storage/temp
+      MAX_FILE_SIZE_MB: 100
+      MAX_CONCURRENT_JOBS: 5
+      JOB_TIMEOUT_SECONDS: 300
+      DOWNLOAD_EXPIRY_SECONDS: 3600
+      FFMPEG_PATH: ffmpeg
+    volumes:
+      - shared-storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  shared-storage:
