@@ -11,6 +11,8 @@ function envInt(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+const defaultStorageRoot = process.env.VERCEL ? '/tmp/auraconvert' : './storage'
+
 export const config = {
   port: envInt('PORT', 3001),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -21,9 +23,9 @@ export const config = {
   },
 
   storage: {
-    uploadDir: path.resolve(process.env.UPLOAD_DIR || './storage/uploads'),
-    outputDir: path.resolve(process.env.OUTPUT_DIR || './storage/outputs'),
-    tempDir: path.resolve(process.env.TEMP_DIR || './storage/temp'),
+    uploadDir: path.resolve(process.env.UPLOAD_DIR || `${defaultStorageRoot}/uploads`),
+    outputDir: path.resolve(process.env.OUTPUT_DIR || `${defaultStorageRoot}/outputs`),
+    tempDir: path.resolve(process.env.TEMP_DIR || `${defaultStorageRoot}/temp`),
   },
 
   limits: {
